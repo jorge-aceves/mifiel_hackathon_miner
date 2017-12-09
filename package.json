@@ -19,6 +19,8 @@
   "homepage": "https://github.com/jorge-aceves/saltygeorge#readme",
   "dependencies": {
     "axios": "^0.17.1",
+    "commander": "^2.12.2",
+    "pryjs": "^1.0.3",
     "sha256": "^0.2.0",
     "ws": "^3.3.2"
   }
