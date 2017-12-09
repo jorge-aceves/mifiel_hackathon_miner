@@ -4,16 +4,11 @@ const crypto = require('crypto')
 const child_process = require('child_process')
 const pry = require('pryjs');
 
-const params = {
-  channel: 'MiniBlockchainChannel',
-  nickname: 'saltygeorge',
-  uuid: 'bc70293f-81ed-4ced-8f45-8f807bbc301f',
-  game: 'testnet',
-  version: '1',
-  message: 'Jorge >>>>> Aldo, Edgar >>>> Juan, Ramses >>>> Marcos'
-};
+const config = require('./config');
+const utils = require('./utils');
+const api = require('./api');
 
-const API = `https://gameathon.mifiel.com/api/v1/games/${params.game}`;
+const params = config.params;
 
 const ws = new WebSocket('wss://gameathon.mifiel.com/cable');
 
@@ -193,27 +188,17 @@ ws.on('open', () => {
     identifier: JSON.stringify(params)
   }
 
-  axios
-    .get(`${API}/blocks`)
-    .then((responseBlocks) => {
-      blocks = responseBlocks.data;
-      axios
-        .get(`${API}/pool`)
-        .then((responsePool) => {
-          pool = responsePool.data;
-
-          axios
-            .get(`${API}/target`)
-            .then((responseTarget) => {
-              target = responseTarget.data.target;
-              console.log("nos llego un bloque")
-              maxCount = 100000000;
-              offset = 0;
-              lastBlock = blocks[blocks.length - 1]
-              onBlockFound(lastBlock)
-            })
-        });
-    });
+  utils
+    .start()
+    .then(values => {
+      blocks = values.blocks;
+      pool = values.pool;
+      target = values.target;
+      maxCount = 100000000;
+      offset = 0;
+      lastBlock = blocks[blocks.length - 1]
+      onBlockFound(lastBlock)
+    })
 
   ws.send(JSON.stringify(data));
 });
@@ -235,7 +220,8 @@ const postBlock = (nonce, hash) => {
   minedBlock.nonce = nonce;
   minedBlock.hash = hash;
 
-  axios.post(`${API}/block_found`, minedBlock)
+  api
+    .blockFound(minedBlock)
     .then(response => {
       console.log('postBlock', response);
     })
