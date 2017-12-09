@@ -10,7 +10,7 @@ const params = {
   uuid: 'bc70293f-81ed-4ced-8f45-8f807bbc301f',
   game: 'testnet',
   version: '1',
-  message: 'Puto el que lo lea 8====D'
+  message: 'Jorge >>>>> Aldo, Edgar >>>> Juan, Ramses >>>> Marcos'
 };
 
 const API = `https://gameathon.mifiel.com/api/v1/games/${params.game}`;
@@ -28,7 +28,7 @@ let minedBlock = {
   hash: null,
   height: null,
   message: params.message,
-  merkle_hash: null,
+  merkle_root: null,
   reward: null,
   nonce: null,
   nickname: params.nickname,
@@ -39,6 +39,16 @@ let minedBlock = {
 }
 
 let looking_for_block = {};
+
+makeid = () => {
+  let text = "";
+  const possible = "ABCDEF0123456789";
+
+  for (let i = 0; i < 10; i++)
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+
+  return text;
+}
 
 getMerkleHash = (transactions) => {
   if (transactions.length == 1) {
@@ -54,7 +64,7 @@ getPartialBlockHeader = (block) => {
       {
         prev_hash: "0000000000000000000000000000000000000000000000000000000000000000",
         vout: -1,
-        script_sig: "12345678901234567890"
+        script_sig: makeid()
       }
     ],
     outputs: [
@@ -65,13 +75,11 @@ getPartialBlockHeader = (block) => {
     ]
   }
   const coinbaseHash = getTransactionHash(coinbaseTrans);
-  eval(pry.it)
   coinbaseTrans.hash = coinbaseHash;
 
   minedBlock.transactions = [coinbaseTrans];
-  minedBlock.merkle_hash = getMerkleHash(minedBlock.transactions);
-
-  return `${params.version}|${block.hash}|${minedBlock.merkle_hash}|${target}|${params.message}|`;
+  minedBlock.merkle_root = getMerkleHash(minedBlock.transactions);
+  return `${params.version}|${block.hash}|${minedBlock.merkle_root}|${target}|${params.message}|`;
 }
 
 reverseString = (str) => {
@@ -97,26 +105,29 @@ hasher = (message) => {
 }
 
 getTransactionHash = (transaction) => {
-  let inputt = Buffer.concat(transaction.inputs.map(input => {
+  let input = Buffer.concat(transaction.inputs.map(inp => {
+    prev = hexBinary(inp.prev_hash)
+    script = new Buffer(inp.script_sig)
+    vout = new Buffer(`${inp.vout}`)
     return Buffer.concat([
-      hexBinary(input.prev_hash),
-      hexBinary(input.script_sig),
-      new Buffer(`${input.vout}`)
+      prev,
+      script,
+      vout
     ]);
   }));
-  let outputt = Buffer.concat(transaction.outputs.map(output => {
+  let output = Buffer.concat(transaction.outputs.map(out => {
     return Buffer.concat([
-      new Buffer(`${output.value}`),
-      new Buffer(`${output.script.length}`),
-      hexBinary(output.script)
+      new Buffer(`${out.value}`),
+      new Buffer(`${out.script.length}`),
+      hexBinary(out.script)
     ]);
   }));
   const buffers = Buffer.concat([
     new Buffer(params.version),
     new Buffer(`${transaction.inputs.length}`),
-    inputt,
+    input,
     new Buffer(`${transaction.outputs.length}`),
-    outputt,
+    output,
     new Buffer('0')
   ]);
   return reverseString(doubleHash(buffers));
@@ -178,7 +189,6 @@ ws.on('open', () => {
     .get(`${API}/blocks`)
     .then((responseBlocks) => {
       blocks = responseBlocks.data;
-
       axios
         .get(`${API}/pool`)
         .then((responsePool) => {
@@ -191,12 +201,8 @@ ws.on('open', () => {
               console.log("nos llego un bloque")
               maxCount = 100000000;
               offset = 0;
-              lastBlock = blocks[blocks.length - 1];
-              looking_for_block[lastBlock.height] = true;
-              if (allMinersClear()) {
-                getPartialBlockHeader(lastBlock)
-                //callMiners(getPartialBlockHeader(lastBlock), lastBlock.height);
-              }
+              lastBlock = blocks[blocks.length - 1]
+              onBlockFound(lastBlock)
             })
         });
     });
@@ -215,6 +221,7 @@ ws.on('message', (event) => {
 
 
 const postBlock = (nonce, hash) => {
+  minedBlock.used_target = target
   minedBlock.height = lastBlock.height + 1;
   minedBlock.prev_block_hash = lastBlock.hash;
   minedBlock.nonce = nonce;
@@ -225,14 +232,17 @@ const postBlock = (nonce, hash) => {
       console.log('postBlock', response);
     })
     .catch(error => {
-      eval(pry.it)
       console.log(error)
     })
 }
 
 const onBlockFound = (block) => {
   console.log('onBlockFound', block);
+  lastBlock = block;
   looking_for_block[blocks[blocks.length - 1].height] = false;
   looking_for_block[block.height] = true;
+  if (allMinersClear()) {
+    callMiners(getPartialBlockHeader(block), block.height);
+  }
   blocks.push(block);
 }
