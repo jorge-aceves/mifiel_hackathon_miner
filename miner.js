@@ -16,6 +16,7 @@ program
 	.version('0.1.0')
 	.option('-s, --start <number>', 'Start')
 	.option('-e, --end <number>', 'End')
+	.option('-i, --id <number>', 'ID')
 	.option('-t --target <number>', 'Target')
 	.option('-h, --header <header>', 'Header')
 	.parse(process.argv);
@@ -41,7 +42,8 @@ while(start < end){
 }
 
 if(start == end){
+	console.error(JSON.stringify({id: program.id}));
 	process.exit(1);
 }
 
-console.log(start);
+console.log(JSON.stringify({id: program.id, nonce: start, hash: doubleHash(fullMessage)}));

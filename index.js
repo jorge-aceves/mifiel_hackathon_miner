@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const axios = require('axios');
 const crypto = require('crypto')
-const exec = require('child_process')
+const child_process = require('child_process')
 
 const params = {
   channel: 'MiniBlockchainChannel',
@@ -16,9 +16,11 @@ const API = `https://gameathon.mifiel.com/api/v1/games/${params.game}`;
 
 const ws = new WebSocket('wss://gameathon.mifiel.com/cable');
 
-let blocks, pool, target;
-
+let maxCount = 100000000;
+let offset = 0;
 let miners = [];
+
+let blocks, pool, target;
 
 getMerkleHash = (transactions) => {
   if (transactions.length == 1){
@@ -86,8 +88,36 @@ getTransactionHash = (transaction) => {
  return reverseString(crypto.createHash('sha256').update(buffers).digest('hex'));
 }
 
-callMiners = (blockHeader) => {
+allMinersClear = () => {
+  let valid = true
+  miners.forEach((miner) => { if(miner !== undefined) valid = false; })
+  return valid;
+}
 
+callMiners = (blockHeader) => {
+  const threads = 4;
+  while(miners.length < threads){
+    miners.push(undefined);
+  }
+  const diff = maxCount / threads;
+  let val = 0;
+  for(let i = 0; i < threads; i++){
+    val = (i * diff) + offset;
+    miners[i] = 'pid'
+    child_process.exec(`./miner.js -s ${val} -e ${val + diff} -h ${blockHeader} -t ${target} -i ${i}`, (err, stdout, stderr) => {
+      if(err) {
+        std = JSON.parse(stderr);
+        miners[std.id] = undefined;
+        if(allMinersClear){
+
+        }
+        return;
+      }
+      std = JSON.parse(stdout)
+      miners[std.id] = undefined
+      postBlock(std.nonce, std.hash);
+    })
+  }
 }
 
 stopMiners = () => {
@@ -116,7 +146,9 @@ ws.on('open', () => {
           .then((responseTarget) => {
             target = responseTarget.data.target;
             console.log("nos llego un bloque")
-            console.log(getPartialBlockHeader());
+            console.log(allMinersClear());
+            miners.push(124);
+            console.log(allMinersClear());
           })
       });
     });
