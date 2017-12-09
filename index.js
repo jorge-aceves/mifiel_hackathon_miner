@@ -50,12 +50,20 @@ makeid = () => {
   return text;
 }
 
-getMerkleHash = (transactions) => {
+getMerkleRoot = (transactions) => {
   if (transactions.length == 1) {
     return transactions[0].hash;
   }
-  arr = transactions;
-  return '123-456-abc';
+  let arr = transactions;
+  do{  
+    new_arr = []
+    if(arr.length % 2 !== 0){
+      arr.push(transactions[transactions.length - 1]);
+    } 
+    new_arr.push(doubleHash(Buffer.concat([Buffer.from(arr.shift(), 'hex'), Buffer.from(arr.shift(), 'hex')])))
+    arr = new_arr;
+  } while(arr.size > 1);
+  return arr[0];
 }
 
 getPartialBlockHeader = (block) => {
@@ -78,7 +86,7 @@ getPartialBlockHeader = (block) => {
   coinbaseTrans.hash = coinbaseHash;
 
   minedBlock.transactions = [coinbaseTrans];
-  minedBlock.merkle_root = getMerkleHash(minedBlock.transactions);
+  minedBlock.merkle_root = getMerkleRoot(minedBlock.transactions);
   return `${params.version}|${block.hash}|${minedBlock.merkle_root}|${target}|${params.message}|`;
 }
 
