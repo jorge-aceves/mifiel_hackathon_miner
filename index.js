@@ -46,18 +46,15 @@ makeid = () => {
 }
 
 getMerkleRoot = (transactions) => {
-  if (transactions.length == 1) {
-    return transactions[0].hash;
-  }
   let arr = transactions;
-  do {
+  while(arr.length > 1){
     new_arr = []
     if (arr.length % 2 !== 0) {
       arr.push(transactions[transactions.length - 1]);
     }
     new_arr.push(doubleHash(Buffer.concat([Buffer.from(arr.shift(), 'hex'), Buffer.from(arr.shift(), 'hex')])))
     arr = new_arr;
-  } while (arr.size > 1);
+  }
   return arr[0];
 }
 
