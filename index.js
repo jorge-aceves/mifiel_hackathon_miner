@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const axios = require('axios');
 const crypto = require('crypto')
 const child_process = require('child_process')
+const pry = require('pryjs');
 
 const params = {
   channel: 'MiniBlockchainChannel',
@@ -30,7 +31,7 @@ let minedBlock = {
   merkle_hash: null,
   reward: null,
   nonce: null,
-  user: params.nickname,
+  nickname: params.nickname,
   target: null,
   created_at: null,
   size: null,
@@ -64,6 +65,7 @@ getPartialBlockHeader = (block) => {
     ]
   }
   const coinbaseHash = getTransactionHash(coinbaseTrans);
+  eval(pry.it)
   coinbaseTrans.hash = coinbaseHash;
 
   minedBlock.transactions = [coinbaseTrans];
@@ -81,11 +83,24 @@ reverseString = (str) => {
   return s;
 }
 
+hexBinary = (hexStr) => {
+  return Buffer.from(hexStr, "hex")
+}
+
+doubleHash = (message) => {
+  sha256 = hasher(message).digest();  
+  return hasher(sha256).digest('hex');
+}
+
+hasher = (message) => {
+  return crypto.createHash('sha256').update(message);
+}
+
 getTransactionHash = (transaction) => {
   let inputt = Buffer.concat(transaction.inputs.map(input => {
     return Buffer.concat([
-      new Buffer(input.prev_hash),
-      new Buffer(input.script_sig),
+      hexBinary(input.prev_hash),
+      hexBinary(input.script_sig),
       new Buffer(`${input.vout}`)
     ]);
   }));
@@ -93,7 +108,7 @@ getTransactionHash = (transaction) => {
     return Buffer.concat([
       new Buffer(`${output.value}`),
       new Buffer(`${output.script.length}`),
-      new Buffer(output.script)
+      hexBinary(output.script)
     ]);
   }));
   const buffers = Buffer.concat([
@@ -104,7 +119,7 @@ getTransactionHash = (transaction) => {
     outputt,
     new Buffer('0')
   ]);
-  return reverseString(crypto.createHash('sha256').update(buffers).digest('hex'));
+  return reverseString(doubleHash(buffers));
 }
 
 allMinersClear = () => {
@@ -140,9 +155,10 @@ callMiners = (blockHeader, height) => {
       }
       std = JSON.parse(stdout)
       miners[std.id] = undefined
+      post = looking_for_block[height] 
       looking_for_block[height] = false;
-      console.log('minamos', std.nonce, std.hash);
-      postBlock(std.nonce, std.hash);
+      if(post) console.log('minamos', std.nonce, std.hash);
+      if(post) postBlock(std.nonce, std.hash);
     })
   }
 }
@@ -178,7 +194,8 @@ ws.on('open', () => {
               lastBlock = blocks[blocks.length - 1];
               looking_for_block[lastBlock.height] = true;
               if (allMinersClear()) {
-                callMiners(getPartialBlockHeader(lastBlock), lastBlock.height);
+                getPartialBlockHeader(lastBlock)
+                //callMiners(getPartialBlockHeader(lastBlock), lastBlock.height);
               }
             })
         });
@@ -198,7 +215,6 @@ ws.on('message', (event) => {
 
 
 const postBlock = (nonce, hash) => {
-  minedBlock.target = target;
   minedBlock.height = lastBlock.height + 1;
   minedBlock.prev_block_hash = lastBlock.hash;
   minedBlock.nonce = nonce;
@@ -209,6 +225,7 @@ const postBlock = (nonce, hash) => {
       console.log('postBlock', response);
     })
     .catch(error => {
+      eval(pry.it)
       console.log(error)
     })
 }
