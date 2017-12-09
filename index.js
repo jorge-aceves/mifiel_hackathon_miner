@@ -22,6 +22,8 @@ let miners = [];
 
 let blocks, pool, target;
 
+let looking_for_block = {};
+
 getMerkleHash = (transactions) => {
   if (transactions.length == 1){
     return transactions[0].hash;
@@ -30,8 +32,7 @@ getMerkleHash = (transactions) => {
   return '123-456-abc';
 }
 
-getPartialBlockHeader = () => {
-  const lastBlock = blocks.pop();
+getPartialBlockHeader = (block) => {
   let coinbaseTrans = {
     inputs: [
       {
@@ -50,7 +51,7 @@ getPartialBlockHeader = () => {
   const coinbaseHash = getTransactionHash(coinbaseTrans);
   coinbaseTrans.hash = coinbaseHash;
   const transactions = [coinbaseTrans];
-  return `${params.version}|${lastBlock.hash}|${getMerkleHash(transactions)}|${target}|${params.message}|`;
+  return `${params.version}|${block.hash}|${getMerkleHash(transactions)}|${target}|${params.message}|`;
 }
 
 reverseString = (str) => {
@@ -94,7 +95,7 @@ allMinersClear = () => {
   return valid;
 }
 
-callMiners = (blockHeader) => {
+callMiners = (blockHeader, height) => {
   const threads = 4;
   while(miners.length < threads){
     miners.push(undefined);
@@ -104,17 +105,24 @@ callMiners = (blockHeader) => {
   for(let i = 0; i < threads; i++){
     val = (i * diff) + offset;
     miners[i] = 'pid'
-    child_process.exec(`./miner.js -s ${val} -e ${val + diff} -h ${blockHeader} -t ${target} -i ${i}`, (err, stdout, stderr) => {
+    child_process.exec(`./miner.js -s '${val}' -e '${val + diff}' -h '${blockHeader}' -t '${target}' -i '${i}'`, (err, stdout, stderr) => {
       if(err) {
         std = JSON.parse(stderr);
         miners[std.id] = undefined;
-        if(allMinersClear){
-
+        if(allMinersClear()){
+          if(looking_for_block[height]){            
+            offset += maxCount;
+            maxCount += 100000000;
+            callMiners(blockHeader, height);
+          } else if(looking_for_block[height+1]){
+            callMiners(getPartialBlockHeader([blocks[blocks.length - 1]]), height+1);
+          }
         }
         return;
       }
       std = JSON.parse(stdout)
       miners[std.id] = undefined
+      looking_for_block[height] = false;
       postBlock(std.nonce, std.hash);
     })
   }
@@ -146,9 +154,13 @@ ws.on('open', () => {
           .then((responseTarget) => {
             target = responseTarget.data.target;
             console.log("nos llego un bloque")
-            console.log(allMinersClear());
-            miners.push(124);
-            console.log(allMinersClear());
+            maxCount = 100000000;
+            offset = 0;
+            lastBlock = blocks[blocks.length - 1];
+            looking_for_block[lastBlock.height] = true;
+            if(allMinersClear()){
+              callMiners(getPartialBlockHeader(lastBlock), lastBlock.height);
+            }
           })
       });
     });
