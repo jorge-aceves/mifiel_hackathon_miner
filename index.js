@@ -3,25 +3,20 @@ const axios = require('axios');
 const crypto = require('crypto')
 const child_process = require('child_process')
 const pry = require('pryjs');
+const config = require('./config');
+const utils = require('./utils');
+const api = require('./api');
 
-const params = {
-  channel: 'MiniBlockchainChannel',
-  nickname: 'saltygeorge',
-  uuid: 'bc70293f-81ed-4ced-8f45-8f807bbc301f',
-  game: 'testnet',
-  version: '1',
-  message: 'Jorge >>>>> Aldo, Edgar >>>> Juan, Ramses >>>> Marcos'
-};
+const params = config.params;
 
-const API = `https://gameathon.mifiel.com/api/v1/games/${params.game}`;
+const ws = new WebSocket(`wss://gameathon.mifiel.com/cable`);
 
-const ws = new WebSocket('wss://gameathon.mifiel.com/cable');
-
-let maxCount = 100000000;
-let offset = 0;
+let maxCount = params.maxCount;
+let offset = params.initialOffset;
 let miners = [];
-
-let blocks, pool, target, lastBlock;
+let blocks = [], pool = {}, target, lastBlock;
+const threads = params.threads;
+const halvingAmount = 90;
 
 let minedBlock = {
   prev_block_hash: null,
@@ -50,15 +45,42 @@ makeid = () => {
   return text;
 }
 
-getMerkleHash = (transactions) => {
-  if (transactions.length == 1) {
-    return transactions[0].hash;
+getMerkleRoot = (transactions) => {
+  let arr = transactions;
+  if(arr.length == 1) return arr[0];
+  while(arr.length > 1){
+    new_arr = []
+    if (arr.length % 2 !== 0) {
+      arr.push(arr[arr.length - 1]);
+    }
+    while(arr.length > 0){
+      new_arr.push(doubleHash(Buffer.concat([Buffer.from(arr.shift(), 'hex'), Buffer.from(arr.shift(), 'hex')]).toString('hex')))
+    }
+    arr = new_arr;
   }
-  arr = transactions;
-  return '123-456-abc';
+  return arr[0];
+}
+
+chooseTransactions = () => {
+  return Object.values(pool).slice(0,100);
+}
+
+getFee = (tx) => {
+  if(typeof(tx) === 'number') return tx;
+  let inputSum = tx.inputs.reduce((i1, i2) => i1.amount + i2.amount, {amount: 0})
+  let outputSum = tx.outputs.reduce((o1, o2) => o1.value + o2.value, {value: 0})
+  return inputSum - outputSum;
 }
 
 getPartialBlockHeader = (block) => {
+  let blockTx = chooseTransactions();
+  let halves = Math.floor(lastBlock.height / halvingAmount)
+  let reward = 5000000000;
+  for(let i = 0; i < halves; i++){
+    reward /= 2;
+  }
+  let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), reward)
+  //let amount = reward 
   let coinbaseTrans = {
     inputs: [
       {
@@ -69,16 +91,18 @@ getPartialBlockHeader = (block) => {
     ],
     outputs: [
       {
-        value: 5000000000,
-        script: '03627eac6729a1f3f210dbfba4f9e21d6bfdce764e00b7559cc68a7551ddd839bf'
+        value: amount,
+        script: 'fb6d05ac4b08fdc028ee642ea813c7ac1107f356'
       }
     ]
   }
   const coinbaseHash = getTransactionHash(coinbaseTrans);
   coinbaseTrans.hash = coinbaseHash;
 
-  minedBlock.transactions = [coinbaseTrans];
-  minedBlock.merkle_root = getMerkleHash(minedBlock.transactions);
+  minedBlock.transactions = [coinbaseTrans, ...blockTx ];
+  //minedBlock.transactions = [coinbaseTrans];
+  minedBlock.merkle_root = getMerkleRoot(minedBlock.transactions.map((t) => t.hash));
+
   return `${params.version}|${block.hash}|${minedBlock.merkle_root}|${target}|${params.message}|`;
 }
 
@@ -96,7 +120,7 @@ hexBinary = (hexStr) => {
 }
 
 doubleHash = (message) => {
-  sha256 = hasher(message).digest();  
+  sha256 = hasher(message).digest();
   return hasher(sha256).digest('hex');
 }
 
@@ -105,9 +129,9 @@ hasher = (message) => {
 }
 
 getTransactionHash = (transaction) => {
-  let input = Buffer.concat(transaction.inputs.map(inp => {
+  let inputt = Buffer.concat(transaction.inputs.map(inp => {
     prev = hexBinary(inp.prev_hash)
-    script = new Buffer(inp.script_sig)
+    script = hexBinary(inp.script_sig)
     vout = new Buffer(`${inp.vout}`)
     return Buffer.concat([
       prev,
@@ -116,16 +140,17 @@ getTransactionHash = (transaction) => {
     ]);
   }));
   let output = Buffer.concat(transaction.outputs.map(out => {
+    let scr = hexBinary(out.script)
     return Buffer.concat([
       new Buffer(`${out.value}`),
-      new Buffer(`${out.script.length}`),
-      hexBinary(out.script)
+      new Buffer(`${scr.length}`),
+      scr
     ]);
   }));
   const buffers = Buffer.concat([
     new Buffer(params.version),
     new Buffer(`${transaction.inputs.length}`),
-    input,
+    inputt,
     new Buffer(`${transaction.outputs.length}`),
     output,
     new Buffer('0')
@@ -140,7 +165,6 @@ allMinersClear = () => {
 }
 
 callMiners = (blockHeader, height) => {
-  const threads = 4;
   while (miners.length < threads) {
     miners.push(undefined);
   }
@@ -148,34 +172,43 @@ callMiners = (blockHeader, height) => {
   let val = 0;
   for (let i = 0; i < threads; i++) {
     val = (i * diff) + offset;
-    miners[i] = 'pid'
-    child_process.exec(`./miner.js -s '${val}' -e '${val + diff}' -h '${blockHeader}' -t '${target}' -i '${i}'`, (err, stdout, stderr) => {
+    proc = child_process.exec(`./miner.js -s '${val}' -e '${val + diff}' -h '${blockHeader}' -t '${target}' -i '${i}'`, (err, stdout, stderr) => {
+      post = looking_for_block[height]
+      if(!post) return;
+      let std;
       if (err) {
-        std = JSON.parse(stderr);
-        miners[std.id] = undefined;
-        if (allMinersClear()) {
-          if (looking_for_block[height]) {
-            offset += maxCount;
-            maxCount += 100000000;
-            callMiners(blockHeader, height);
-          } else if (looking_for_block[height + 1]) {
-            callMiners(getPartialBlockHeader([blocks[blocks.length - 1]]), height + 1);
-          }
+        if(err.killed){
+          return;
+        }
+        if (allMinersClear() && looking_for_block[height]) {
+          std = JSON.parse(stderr);
+          miners[std.id] = undefined;
+          offset += maxCount;
+          maxCount += params.maxCount;
+          setTimeout(callMiners(blockHeader, height), 0);
         }
         return;
       }
-      std = JSON.parse(stdout)
-      miners[std.id] = undefined
-      post = looking_for_block[height] 
+      std = JSON.parse(stdout);
+      miners[std.id] = undefined;
       looking_for_block[height] = false;
-      if(post) console.log('minamos', std.nonce, std.hash);
-      if(post) postBlock(std.nonce, std.hash);
+      stopMiners();
+      console.log('minamos', std.nonce, std.hash);
+      postBlock(std.nonce, std.hash);
     })
+    miners[i] = proc;
   }
 }
 
 stopMiners = () => {
-
+  for(let i = 0; i < threads; i++){
+    if(miners[i] !== undefined){
+      miners[i].kill();
+      miners[i] = undefined;
+    }
+  }
+  maxCount = params.maxCount;
+  offset = params.initialOffset;
 }
 
 
@@ -185,37 +218,30 @@ ws.on('open', () => {
     identifier: JSON.stringify(params)
   }
 
-  axios
-    .get(`${API}/blocks`)
-    .then((responseBlocks) => {
-      blocks = responseBlocks.data;
-      axios
-        .get(`${API}/pool`)
-        .then((responsePool) => {
-          pool = responsePool.data;
-
-          axios
-            .get(`${API}/target`)
-            .then((responseTarget) => {
-              target = responseTarget.data.target;
-              console.log("nos llego un bloque")
-              maxCount = 100000000;
-              offset = 0;
-              lastBlock = blocks[blocks.length - 1]
-              onBlockFound(lastBlock)
-            })
-        });
-    });
+  utils
+    .start()
+    .then(values => {
+      blocks = values.blocks;
+      values.pool.forEach((v) => pool[v.hash] = v);
+      target = values.target;
+      lastBlock = blocks[blocks.length - 1]
+      onBlockFound(lastBlock)
+    })
 
   ws.send(JSON.stringify(data));
 });
 
 ws.on('message', (event) => {
-  // console.log(event)
-
+  event = JSON.parse(event);
 
   if (event.message && event.message.type === 'block_found') {
     onBlockFound(event.message.data);
+  }
+  if (event.message && event.message.type === 'new_transaction') {
+    onNewTransaction(event.message.data);
+  }
+  if (event.message && event.message.type === 'target_changed') {
+    onTargetChange(event.message.data);
   }
 });
 
@@ -227,7 +253,8 @@ const postBlock = (nonce, hash) => {
   minedBlock.nonce = nonce;
   minedBlock.hash = hash;
 
-  axios.post(`${API}/block_found`, minedBlock)
+  api
+    .blockFound(minedBlock)
     .then(response => {
       console.log('postBlock', response);
     })
@@ -237,12 +264,25 @@ const postBlock = (nonce, hash) => {
 }
 
 const onBlockFound = (block) => {
+  stopMiners();
+  block.transactions.forEach((t) => delete pool[t.hash])
   console.log('onBlockFound', block);
   lastBlock = block;
   looking_for_block[blocks[blocks.length - 1].height] = false;
   looking_for_block[block.height] = true;
-  if (allMinersClear()) {
-    callMiners(getPartialBlockHeader(block), block.height);
-  }
+  callMiners(getPartialBlockHeader(block), block.height);
   blocks.push(block);
+}
+
+const onNewTransaction = (transaction) => {
+  console.log('onNewTransaction', transaction);
+  pool[transaction.hash] = transaction;
+}
+
+
+const onTargetChange = (newTarget) => {
+  console.log('onTargetChange', newTarget);
+  stopMiners();
+  target = newTarget;
+  callMiners(getPartialBlockHeader(lastBlock), lastBlock.height);
 }
