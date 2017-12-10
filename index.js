@@ -14,7 +14,7 @@ const ws = new WebSocket(`wss://gameathon.mifiel.com/cable`);
 let maxCount = params.maxCount;
 let offset = params.initialOffset;
 let miners = [];
-let blocks = [], pool = [], target, lastBlock;
+let blocks = [], pool = {}, target, lastBlock;
 const threads = params.threads;
 const halvingAmount = 90;
 
@@ -62,7 +62,7 @@ getMerkleRoot = (transactions) => {
 }
 
 chooseTransactions = () => {
-  return pool.slice(0,100);
+  return Object.values(pool).slice(0,100);
 }
 
 getFee = (tx) => {
@@ -222,7 +222,7 @@ ws.on('open', () => {
     .start()
     .then(values => {
       blocks = values.blocks;
-      pool = values.pool;
+      values.pool.forEach((v) => pool[v.hash] = v);
       target = values.target;
       lastBlock = blocks[blocks.length - 1]
       onBlockFound(lastBlock)
@@ -265,27 +265,18 @@ const postBlock = (nonce, hash) => {
 
 const onBlockFound = (block) => {
   stopMiners();
-  api
-    .getPool()
-    .then(newPool => {
-      pool = newPool;
-      console.log('onBlockFound', block);
-      lastBlock = block;
-
-      looking_for_block[blocks[blocks.length - 1].height] = false;
-      looking_for_block[block.height] = true;
-      callMiners(getPartialBlockHeader(block), block.height);
-      blocks.push(block);
-    })
-    .catch(err => {
-      console.log('Error en onBlockFound', err);
-    })
-
+  block.transactions.forEach((t) => delete pool[t.hash])
+  console.log('onBlockFound', block);
+  lastBlock = block;
+  looking_for_block[blocks[blocks.length - 1].height] = false;
+  looking_for_block[block.height] = true;
+  callMiners(getPartialBlockHeader(block), block.height);
+  blocks.push(block);
 }
 
 const onNewTransaction = (transaction) => {
   console.log('onNewTransaction', transaction);
-  pool.push(transaction);
+  pool[transaction.hash] = transaction;
 }
 
 
