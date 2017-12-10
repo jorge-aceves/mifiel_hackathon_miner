@@ -62,7 +62,7 @@ getMerkleRoot = (transactions) => {
 }
 
 chooseTransactions = () => {
-  return pool.filter((e) => e.inputs[0].prev_hash !== '97d850633904a20aff3c93f0bd1765768c76cb3c29faf6d47308b925445f47ad').slice(0,100);
+  return pool.slice(0,100);
 }
 
 getFee = (tx) => {
