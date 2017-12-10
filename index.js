@@ -9,13 +9,13 @@ const api = require('./api');
 
 const params = config.params;
 
-const ws = new WebSocket(`ws://gameathon.mifiel.com/cable`);
+const ws = new WebSocket(`wss://gameathon.mifiel.com/cable`);
 
 let maxCount = 100000000;
 let offset = 0;
 let miners = [];
-
 let blocks, pool, target, lastBlock;
+const threads = 4;
 
 let minedBlock = {
   prev_block_hash: null,
@@ -46,18 +46,35 @@ makeid = () => {
 
 getMerkleRoot = (transactions) => {
   let arr = transactions;
+  if(arr.length == 1) return arr[0];
   while(arr.length > 1){
     new_arr = []
     if (arr.length % 2 !== 0) {
-      arr.push(transactions[transactions.length - 1]);
+      arr.push(arr[arr.length - 1]);
     }
-    new_arr.push(doubleHash(Buffer.concat([Buffer.from(arr.shift(), 'hex'), Buffer.from(arr.shift(), 'hex')])))
+    while(arr.length > 0){
+      new_arr.push(doubleHash(Buffer.concat([Buffer.from(arr.shift(), 'hex'), Buffer.from(arr.shift(), 'hex')]).toString('hex')))
+    }
     arr = new_arr;
   }
   return arr[0];
 }
 
+chooseTransactions = () => {
+  return pool.slice(3,6);
+}
+
+getFee = (tx) => {
+  if(typeof(tx) === 'number') return tx;
+  let inputSum = tx.inputs.reduce((i1, i2) => i1.amount + i2.amount, {amount: 0})
+  let outputSum = tx.outputs.reduce((o1, o2) => o1.value + o2.value, {value: 0})
+  return inputSum - outputSum;
+}
+
 getPartialBlockHeader = (block) => {
+  let blockTx = chooseTransactions();
+//  let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), 5000000000)
+  let amount = 2500000000
   let coinbaseTrans = {
     inputs: [
       {
@@ -68,7 +85,7 @@ getPartialBlockHeader = (block) => {
     ],
     outputs: [
       {
-        value: 5000000000,
+        value: amount,
         script: 'fb6d05ac4b08fdc028ee642ea813c7ac1107f356'
       }
     ]
@@ -76,8 +93,10 @@ getPartialBlockHeader = (block) => {
   const coinbaseHash = getTransactionHash(coinbaseTrans);
   coinbaseTrans.hash = coinbaseHash;
 
+  //minedBlock.transactions = [coinbaseTrans, ...blockTx ];
   minedBlock.transactions = [coinbaseTrans];
-  minedBlock.merkle_root = getMerkleRoot(minedBlock.transactions);
+  minedBlock.merkle_root = getMerkleRoot(minedBlock.transactions.map((t) => t.hash));
+
   return `${params.version}|${block.hash}|${minedBlock.merkle_root}|${target}|${params.message}|`;
 }
 
@@ -140,7 +159,6 @@ allMinersClear = () => {
 }
 
 callMiners = (blockHeader, height) => {
-  const threads = 4;
   while (miners.length < threads) {
     miners.push(undefined);
   }
@@ -148,11 +166,19 @@ callMiners = (blockHeader, height) => {
   let val = 0;
   for (let i = 0; i < threads; i++) {
     val = (i * diff) + offset;
-    miners[i] = 'pid'
-    child_process.exec(`./miner.js -s '${val}' -e '${val + diff}' -h '${blockHeader}' -t '${target}' -i '${i}'`, (err, stdout, stderr) => {
-      if (err) {
+    proc = child_process.exec(`./miner.js -s '${val}' -e '${val + diff}' -h '${blockHeader}' -t '${target}' -i '${i}'`, (err, stdout, stderr) => {
+      post = looking_for_block[height]
+      let std;
+      if (err){
+        if(err.killed){
+          return;
+        }
         std = JSON.parse(stderr);
-        miners[std.id] = undefined;
+      } else{
+        std = JSON.parse(stdout);
+      }
+      miners[std.id] = undefined;
+      if (err || !post) {
         if (allMinersClear()) {
           if (looking_for_block[height]) {
             offset += maxCount;
@@ -164,18 +190,22 @@ callMiners = (blockHeader, height) => {
         }
         return;
       }
-      std = JSON.parse(stdout)
-      miners[std.id] = undefined
-      post = looking_for_block[height]
       looking_for_block[height] = false;
       if (post) console.log('minamos', std.nonce, std.hash);
+      stopMiners();
       if (post) postBlock(std.nonce, std.hash);
     })
+    miners[i] = proc;
   }
 }
 
 stopMiners = () => {
-
+  for(let i = 0; i < threads; i++){
+    if(miners[i] !== undefined){
+      miners[i].kill();
+      miners[i] = undefined;
+    }
+  }
 }
 
 
@@ -201,8 +231,7 @@ ws.on('open', () => {
 });
 
 ws.on('message', (event) => {
-  // console.log(event)
-
+  event = JSON.parse(event);
 
   if (event.message && event.message.type === 'block_found') {
     onBlockFound(event.message.data);
@@ -234,6 +263,7 @@ const postBlock = (nonce, hash) => {
 }
 
 const onBlockFound = (block) => {
+  console.log("nos llamo")
   api
     .getPool()
     .then(newPool => {
@@ -244,6 +274,7 @@ const onBlockFound = (block) => {
 
       looking_for_block[blocks[blocks.length - 1].height] = false;
       looking_for_block[block.height] = true;
+      
       if (allMinersClear()) {
         callMiners(getPartialBlockHeader(block), block.height);
       }
