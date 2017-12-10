@@ -284,5 +284,5 @@ const onTargetChange = (newTarget) => {
   console.log('onTargetChange', newTarget);
   stopMiners();
   target = newTarget;
-  callMiners(getPartialBlockHeader(block), block.height);
+  callMiners(getPartialBlockHeader(lastBlock), lastBlock.height);
 }
