@@ -50,14 +50,14 @@ getMerkleRoot = (transactions) => {
     return transactions[0].hash;
   }
   let arr = transactions;
-  do{  
+  do {
     new_arr = []
-    if(arr.length % 2 !== 0){
+    if (arr.length % 2 !== 0) {
       arr.push(transactions[transactions.length - 1]);
-    } 
+    }
     new_arr.push(doubleHash(Buffer.concat([Buffer.from(arr.shift(), 'hex'), Buffer.from(arr.shift(), 'hex')])))
     arr = new_arr;
-  } while(arr.size > 1);
+  } while (arr.size > 1);
   return arr[0];
 }
 
@@ -99,7 +99,7 @@ hexBinary = (hexStr) => {
 }
 
 doubleHash = (message) => {
-  sha256 = hasher(message).digest();  
+  sha256 = hasher(message).digest();
   return hasher(sha256).digest('hex');
 }
 
@@ -169,10 +169,10 @@ callMiners = (blockHeader, height) => {
       }
       std = JSON.parse(stdout)
       miners[std.id] = undefined
-      post = looking_for_block[height] 
+      post = looking_for_block[height]
       looking_for_block[height] = false;
-      if(post) console.log('minamos', std.nonce, std.hash);
-      if(post) postBlock(std.nonce, std.hash);
+      if (post) console.log('minamos', std.nonce, std.hash);
+      if (post) postBlock(std.nonce, std.hash);
     })
   }
 }
@@ -210,6 +210,12 @@ ws.on('message', (event) => {
   if (event.message && event.message.type === 'block_found') {
     onBlockFound(event.message.data);
   }
+  if (event.message && event.message.type === 'new_transaction') {
+    onNewTransaction(event.message.data);
+  }
+  if (event.message && event.message.type === 'target_changed') {
+    onTargetChange(event.message.data);
+  }
 });
 
 
@@ -231,12 +237,35 @@ const postBlock = (nonce, hash) => {
 }
 
 const onBlockFound = (block) => {
-  console.log('onBlockFound', block);
-  lastBlock = block;
-  looking_for_block[blocks[blocks.length - 1].height] = false;
-  looking_for_block[block.height] = true;
-  if (allMinersClear()) {
-    callMiners(getPartialBlockHeader(block), block.height);
-  }
-  blocks.push(block);
+  api
+    .getPool()
+    .then(newPool => {
+      pool = newPool;
+      console.log('onBlockFound', block);
+      lastBlock = block;
+
+
+      looking_for_block[blocks[blocks.length - 1].height] = false;
+      looking_for_block[block.height] = true;
+      if (allMinersClear()) {
+        callMiners(getPartialBlockHeader(block), block.height);
+      }
+
+      blocks.push(block);
+    })
+    .catch(err => {
+      console.log('Error en onBlockFound', err);
+    })
+
+}
+
+const onNewTransaction = (transaction) => {
+  console.log('onNewTransaction', transaction);
+  pool.push(transaction);
+}
+
+
+const onTargetChange = (newTarget) => {
+  console.log('onTargetChange', newTarget);
+  target = newTarget;
 }

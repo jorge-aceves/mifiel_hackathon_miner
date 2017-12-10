@@ -4,7 +4,7 @@ module.exports = {
   start: function() {
     return new Promise((resolve, reject) => {
       Promise
-        .all([api.getBlocks, api.getPool, api.getTarget])
+        .all([api.getBlocks(), api.getPool(), api.getTarget()])
         .then(values => {
           resolve({
             blocks: values[0],
