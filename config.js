@@ -8,6 +8,7 @@ module.exports = {
     message: 'saltygeorge >> todos',
     initialOffset: 100000000,
     threads: 4,
-    maxCount: 100000000
+    maxCount: 100000000,
+    outputScriptCoinBase:'fb6d05ac4b08fdc028ee642ea813c7ac1107f356'
   },
 }
