@@ -43,5 +43,12 @@ module.exports = {
         })
         .catch(error => reject(error))
     })
-  }
+  },
+  validateTransaction: function (txs) {
+    return new Promise((resolve, reject) => {
+      axios.post(`${API}/transactions/validate`, txs)
+        .then(response => resolve(response.data))
+        .catch(error => reject(error.response.data))
+      });
+  },
 }
