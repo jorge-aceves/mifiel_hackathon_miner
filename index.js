@@ -14,7 +14,7 @@ const ws = new WebSocket(`wss://gameathon.mifiel.com/cable`);
 let maxCount = 100000000;
 let offset = 0;
 let miners = [];
-let blocks, pool, target, lastBlock;
+let blocks = [], pool = [], target, lastBlock;
 const threads = 4;
 const halvingAmount = 90;
 
@@ -62,7 +62,7 @@ getMerkleRoot = (transactions) => {
 }
 
 chooseTransactions = () => {
-  return pool.slice(3,6);
+  return pool.filter((e) => e.inputs[0].prev_hash !== '97d850633904a20aff3c93f0bd1765768c76cb3c29faf6d47308b925445f47ad').slice(0,100);
 }
 
 getFee = (tx) => {
@@ -79,8 +79,8 @@ getPartialBlockHeader = (block) => {
   for(let i = 0; i < halves; i++){
     reward /= 2;
   }
-  //  let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), reward)
-  let amount = reward
+  let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), reward)
+  //let amount = reward 
   let coinbaseTrans = {
     inputs: [
       {
@@ -99,8 +99,8 @@ getPartialBlockHeader = (block) => {
   const coinbaseHash = getTransactionHash(coinbaseTrans);
   coinbaseTrans.hash = coinbaseHash;
 
-  //minedBlock.transactions = [coinbaseTrans, ...blockTx ];
-  minedBlock.transactions = [coinbaseTrans];
+  minedBlock.transactions = [coinbaseTrans, ...blockTx ];
+  //minedBlock.transactions = [coinbaseTrans];
   minedBlock.merkle_root = getMerkleRoot(minedBlock.transactions.map((t) => t.hash));
 
   return `${params.version}|${block.hash}|${minedBlock.merkle_root}|${target}|${params.message}|`;
@@ -264,7 +264,7 @@ const postBlock = (nonce, hash) => {
 }
 
 const onBlockFound = (block) => {
-  console.log("nos llamo")
+  stopMiners();
   api
     .getPool()
     .then(newPool => {
@@ -274,7 +274,6 @@ const onBlockFound = (block) => {
 
       looking_for_block[blocks[blocks.length - 1].height] = false;
       looking_for_block[block.height] = true;
-      stopMiners();
       callMiners(getPartialBlockHeader(block), block.height);
       blocks.push(block);
     })

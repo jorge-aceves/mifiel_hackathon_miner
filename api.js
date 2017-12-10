@@ -8,7 +8,7 @@ module.exports = {
     return new Promise((resolve, reject) => {
       axios
         .get(`${API}/blocks`)
-        .then((reponse) => resolve(reponse.data))
+        .then((response) => resolve(response.data))
         .catch((error) => reject(error.response.data));
     });
   },
