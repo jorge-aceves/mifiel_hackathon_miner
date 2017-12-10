@@ -11,11 +11,11 @@ const params = config.params;
 
 const ws = new WebSocket(`wss://gameathon.mifiel.com/cable`);
 
-let maxCount = 100000000;
-let offset = 0;
+let maxCount = params.maxCount;
+let offset = params.initialOffset;
 let miners = [];
 let blocks = [], pool = [], target, lastBlock;
-const threads = 4;
+const threads = params.threads;
 const halvingAmount = 90;
 
 let minedBlock = {
@@ -184,7 +184,7 @@ callMiners = (blockHeader, height) => {
           std = JSON.parse(stderr);
           miners[std.id] = undefined;
           offset += maxCount;
-          maxCount += 100000000;
+          maxCount += params.maxCount;
           setTimeout(callMiners(blockHeader, height), 0);
         }
         return;
@@ -207,6 +207,8 @@ stopMiners = () => {
       miners[i] = undefined;
     }
   }
+  maxCount = params.maxCount;
+  offset = params.initialOffset;
 }
 
 
@@ -222,8 +224,6 @@ ws.on('open', () => {
       blocks = values.blocks;
       pool = values.pool;
       target = values.target;
-      maxCount = 100000000;
-      offset = 0;
       lastBlock = blocks[blocks.length - 1]
       onBlockFound(lastBlock)
     })
@@ -291,5 +291,7 @@ const onNewTransaction = (transaction) => {
 
 const onTargetChange = (newTarget) => {
   console.log('onTargetChange', newTarget);
+  stopMiners();
   target = newTarget;
+  callMiners(getPartialBlockHeader(block), block.height);
 }

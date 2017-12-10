@@ -6,5 +6,8 @@ module.exports = {
     game: 'testnet3',
     version: '1',
     message: 'saltygeorge >> todos',
+    initialOffset: 0,
+    threads: 4,
+    maxCount: 100000000
   },
 }
