@@ -3,14 +3,13 @@ const axios = require('axios');
 const crypto = require('crypto')
 const child_process = require('child_process')
 const pry = require('pryjs');
-
 const config = require('./config');
 const utils = require('./utils');
 const api = require('./api');
 
 const params = config.params;
 
-const ws = new WebSocket('wss://gameathon.mifiel.com/cable');
+const ws = new WebSocket(`ws://gameathon.mifiel.com/cable`);
 
 let maxCount = 100000000;
 let offset = 0;
@@ -70,7 +69,7 @@ getPartialBlockHeader = (block) => {
     outputs: [
       {
         value: 5000000000,
-        script: '03627eac6729a1f3f210dbfba4f9e21d6bfdce764e00b7559cc68a7551ddd839bf'
+        script: 'fb6d05ac4b08fdc028ee642ea813c7ac1107f356'
       }
     ]
   }
@@ -105,9 +104,9 @@ hasher = (message) => {
 }
 
 getTransactionHash = (transaction) => {
-  let input = Buffer.concat(transaction.inputs.map(inp => {
+  let inputt = Buffer.concat(transaction.inputs.map(inp => {
     prev = hexBinary(inp.prev_hash)
-    script = new Buffer(inp.script_sig)
+    script = hexBinary(inp.script_sig)
     vout = new Buffer(`${inp.vout}`)
     return Buffer.concat([
       prev,
@@ -116,16 +115,17 @@ getTransactionHash = (transaction) => {
     ]);
   }));
   let output = Buffer.concat(transaction.outputs.map(out => {
+    let scr = hexBinary(out.script)
     return Buffer.concat([
       new Buffer(`${out.value}`),
-      new Buffer(`${out.script.length}`),
-      hexBinary(out.script)
+      new Buffer(`${scr.length}`),
+      scr
     ]);
   }));
   const buffers = Buffer.concat([
     new Buffer(params.version),
     new Buffer(`${transaction.inputs.length}`),
-    input,
+    inputt,
     new Buffer(`${transaction.outputs.length}`),
     output,
     new Buffer('0')
