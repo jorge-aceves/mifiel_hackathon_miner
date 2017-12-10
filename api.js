@@ -33,6 +33,15 @@ module.exports = {
       axios.post(`${API}/block_found`, minedBlock)
         .then(response => resolve(response.data))
         .catch(error => reject(error.response.data))
-    });
+      });
+  },
+  getOurMinedBlocks: function() {
+    return new Promise((resolve, reject) => {
+      this.getBlocks()
+        .then((blocks) => {
+          resolve(blocks.filter(block => block.user === config.params.nickname))
+        })
+        .catch(error => reject(error))
+    })
   }
 }
