@@ -62,7 +62,7 @@ getMerkleRoot = (transactions) => {
 }
 
 chooseTransactions = () => {
-  return Object.values(pool).slice(0,100);
+  return Object.values(pool);
 }
 
 getFee = (tx) => {
@@ -79,6 +79,7 @@ getPartialBlockHeader = (block) => {
   for(let i = 0; i < halves; i++){
     reward /= 2;
   }
+  reward = Math.floor(reward)
   let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), reward)
   //let amount = reward 
   let coinbaseTrans = {
@@ -160,7 +161,11 @@ getTransactionHash = (transaction) => {
 
 allMinersClear = () => {
   let valid = true
-  miners.forEach((miner) => { if (miner !== undefined) valid = false; })
+  for(let i=0; i < threads; i++){
+    if(miners[i] !== undefined){
+      valid = false;
+    }
+  }
   return valid;
 }
 
@@ -180,12 +185,15 @@ callMiners = (blockHeader, height) => {
         if(err.killed){
           return;
         }
+        std = JSON.parse(stderr);
+        miners[std.id] = undefined;
+        console.log("Finished " + i)
+        console.log(allMinersClear())
+        console.log("block " + looking_for_block[height])
         if (allMinersClear() && looking_for_block[height]) {
-          std = JSON.parse(stderr);
-          miners[std.id] = undefined;
           offset += maxCount;
           maxCount += params.maxCount;
-          setTimeout(callMiners(blockHeader, height), 0);
+          callMiners(blockHeader, height);
         }
         return;
       }
@@ -225,10 +233,11 @@ ws.on('open', () => {
       values.pool.forEach((v) => pool[v.hash] = v);
       target = values.target;
       lastBlock = blocks[blocks.length - 1]
+      ws.send(JSON.stringify(data));
       onBlockFound(lastBlock)
     })
 
-  ws.send(JSON.stringify(data));
+
 });
 
 ws.on('message', (event) => {
