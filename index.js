@@ -16,6 +16,7 @@ let offset = 0;
 let miners = [];
 let blocks, pool, target, lastBlock;
 const threads = 4;
+const halvingAmount = 90;
 
 let minedBlock = {
   prev_block_hash: null,
@@ -73,8 +74,13 @@ getFee = (tx) => {
 
 getPartialBlockHeader = (block) => {
   let blockTx = chooseTransactions();
-//  let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), 5000000000)
-  let amount = 2500000000
+  let halves = Math.floor(lastBlock.height / halvingAmount)
+  let reward = 5000000000;
+  for(let i = 0; i < halves; i++){
+    reward /= 2;
+  }
+  //  let amount = blockTx.reduce((tx1, tx2) => getFee(tx1) + getFee(tx2), reward)
+  let amount = reward
   let coinbaseTrans = {
     inputs: [
       {
@@ -168,32 +174,27 @@ callMiners = (blockHeader, height) => {
     val = (i * diff) + offset;
     proc = child_process.exec(`./miner.js -s '${val}' -e '${val + diff}' -h '${blockHeader}' -t '${target}' -i '${i}'`, (err, stdout, stderr) => {
       post = looking_for_block[height]
+      if(!post) return;
       let std;
-      if (err){
+      if (err) {
         if(err.killed){
           return;
         }
-        std = JSON.parse(stderr);
-      } else{
-        std = JSON.parse(stdout);
-      }
-      miners[std.id] = undefined;
-      if (err || !post) {
-        if (allMinersClear()) {
-          if (looking_for_block[height]) {
-            offset += maxCount;
-            maxCount += 100000000;
-            callMiners(blockHeader, height);
-          } else if (looking_for_block[height + 1]) {
-            callMiners(getPartialBlockHeader([blocks[blocks.length - 1]]), height + 1);
-          }
+        if (allMinersClear() && looking_for_block[height]) {
+          std = JSON.parse(stderr);
+          miners[std.id] = undefined;
+          offset += maxCount;
+          maxCount += 100000000;
+          setTimeout(callMiners(blockHeader, height), 0);
         }
         return;
       }
+      std = JSON.parse(stdout);
+      miners[std.id] = undefined;
       looking_for_block[height] = false;
-      if (post) console.log('minamos', std.nonce, std.hash);
       stopMiners();
-      if (post) postBlock(std.nonce, std.hash);
+      console.log('minamos', std.nonce, std.hash);
+      postBlock(std.nonce, std.hash);
     })
     miners[i] = proc;
   }
@@ -271,14 +272,10 @@ const onBlockFound = (block) => {
       console.log('onBlockFound', block);
       lastBlock = block;
 
-
       looking_for_block[blocks[blocks.length - 1].height] = false;
       looking_for_block[block.height] = true;
-      
-      if (allMinersClear()) {
-        callMiners(getPartialBlockHeader(block), block.height);
-      }
-
+      stopMiners();
+      callMiners(getPartialBlockHeader(block), block.height);
       blocks.push(block);
     })
     .catch(err => {
